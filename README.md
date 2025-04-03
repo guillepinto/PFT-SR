@@ -80,7 +80,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python -m torch.distributed.launch --use-en
 
 - PFT-light (Lightweight Image Super-Resolution)
 ```bash
-# batch size = 2 (GPUs) × 16 (per GPU)
+# batch size = 4 (GPUs) × 8 (per GPU)
 # training dataset: DIV2K
 
 # ×2 scratch, input size = 64×64, 500k iterations
