@@ -18,12 +18,13 @@ __global__ void SMM_QmK_forward_kernel(const float* A, const float* B, const int
         int b_col = index[batch * N * K + row * K + col];
         float value = 0.0;
         for (int e = 0; e < C_dim; ++e) {
-            // A (Batch, N, C) and B (Batch, C, N)
             value += A[batch * N * C_dim + row * C_dim + e] * B[batch * C_dim * B_cols + e * B_cols + b_col];
         }
         C[batch * N * K + row * K + col] = value;
     }
 }
+
+
 
 // Forward propagation function
 at::Tensor SMM_QmK_forward_cuda(const at::Tensor &A, const at::Tensor &B, const at::Tensor &index) {
@@ -41,7 +42,7 @@ at::Tensor SMM_QmK_forward_cuda(const at::Tensor &A, const at::Tensor &B, const 
 
     auto C = at::zeros({Batch, N, K}, A.options().dtype(torch::kFloat32));
 
-    const int threads = 32;
+    const int threads =16;
     const dim3 block_dim(threads, threads);
     const dim3 grid_dim((K + threads - 1) / threads, (N + threads - 1) / threads, Batch);
 
@@ -52,26 +53,54 @@ at::Tensor SMM_QmK_forward_cuda(const at::Tensor &A, const at::Tensor &B, const 
     return C;
 }
 
-// CUDA kernel for backward propagation
-__global__ void SMM_QmK_backward_kernel(const float* grad_output, const float* A, const float* B, const int* index, float* grad_A, float* grad_B, int Batch, int N, int K, int C_dim, int B_cols) {
+
+
+// 独立计算grad_A的核函数
+__global__ void SMM_QmK_backward_gradA_kernel(
+    const float* grad_output,
+    const float* B_T,
+    const int* index,
+    float* grad_A,
+    int Batch, int N, int K, int C_dim, int B_cols)
+{
     int batch = blockIdx.z;
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (row < N && col < K) {
-        int b_col = index[batch * N * K + row * K + col];
+    if (batch < Batch && row < N && col < C_dim) {
+        float grad_value = 0.0f;
+        for (int k = 0; k < K; ++k) {
+            int b_row = index[batch * N * K + row * K + k];
+            grad_value += grad_output[batch * N * K + row * K + k] * B_T[batch * B_cols * C_dim + b_row * C_dim + col];
+        }
+        grad_A[batch * N * C_dim + row * C_dim + col] = grad_value;
+    }
+}
 
-        // Compute the index of grad_output and get its gradient value
-        int grad_output_idx = batch * N * K + row * K + col;
-        float grad_value = grad_output[grad_output_idx];
 
-        for (int e = 0; e < C_dim; ++e) {
-            // Accumulate gradients into grad_A and grad_B
-            atomicAdd(&grad_A[batch * N * C_dim + row * C_dim + e], grad_value * B[batch * C_dim * B_cols + e * B_cols + b_col]);
-            atomicAdd(&grad_B[batch * C_dim * B_cols + e * B_cols + b_col], grad_value * A[batch * N * C_dim + row * C_dim + e]);
+// 独立计算grad_B的核函数
+__global__ void SMM_QmK_backward_gradB_kernel(
+    const float* grad_output,
+    const float* A_T,
+    const int* index,
+    float* grad_B,
+    int Batch, int N, int K, int C_dim, int B_cols)
+{
+    int batch = blockIdx.z;
+    int row = blockIdx.y * blockDim.y + threadIdx.y; // C_dim
+    int col = blockIdx.x * blockDim.x + threadIdx.x; // K
+
+    if (batch < Batch && row < C_dim && col < K) {
+        for (int n = 0; n < N; ++n) {
+            int b_col = index[batch * N * K + n * K + col];
+            float a_val = A_T[batch * C_dim * N + row * N + n]; // A_T shape: (Batch, C, N)
+            float g = grad_output[batch * N * K + n * K + col];
+            // atomicAdd(&grad_B[batch * C_dim * B_cols + row * B_cols + b_col], a_val * g);
+            grad_B[batch * C_dim * B_cols + row * B_cols + b_col] += a_val * g;
         }
     }
 }
+
 
 std::vector<at::Tensor> SMM_QmK_backward_cuda(const at::Tensor &grad_output,
                                                        const at::Tensor &A,
@@ -93,25 +122,34 @@ std::vector<at::Tensor> SMM_QmK_backward_cuda(const at::Tensor &grad_output,
     // Allocate gradient tensors
     auto grad_A = at::zeros_like(A);
     auto grad_B = at::zeros_like(B);
+    auto A_T = A.transpose(1, 2).contiguous(); // A^T (dimension swap)
+    auto B_T = B.transpose(1, 2).contiguous(); // B^T (dimension swap)
 
-    // Define the size of the CUDA blocks and grids
-    const int threads = 32;
-    const dim3 block_dim(threads, threads);
-    const dim3 grid_dim((K + threads - 1) / threads, (N + threads - 1) / threads, Batch);
+    // 独立配置两个核函数的执行参数
+    // grad_A核函数配置（N x C_dim网格）
+    const int threads =16;
+    dim3 grid_gradA((C_dim + threads-1)/threads, (N + threads-1)/threads, Batch);
+    dim3 block_gradA(threads, threads);
+    
+    // grad_B核函数配置（B_cols x C_dim网格）
+    dim3 grid_gradB((K + threads-1)/threads, (C_dim + threads-1)/threads, Batch);
+    dim3 block_gradB(threads, threads);
 
-    // Launch the CUDA kernel to perform the backward operation
-    SMM_QmK_backward_kernel<<<grid_dim, block_dim>>>(
+    // 分别启动核函数
+    SMM_QmK_backward_gradA_kernel<<<grid_gradA, block_gradA>>>(
         grad_output.data_ptr<float>(),
-        A.data_ptr<float>(),
-        B.data_ptr<float>(),
+        B_T.data_ptr<float>(),
         index.data_ptr<int>(),
         grad_A.data_ptr<float>(),
+        Batch, N, K, C_dim, B_cols
+    );
+
+    SMM_QmK_backward_gradB_kernel<<<grid_gradB, block_gradB>>>(
+        grad_output.data_ptr<float>(),
+        A_T.data_ptr<float>(),
+        index.data_ptr<int>(),
         grad_B.data_ptr<float>(),
-        Batch,
-        N,
-        K,
-        C_dim,
-        B_cols
+        Batch, N, K, C_dim, B_cols
     );
 
     return {grad_A, grad_B};
@@ -124,18 +162,18 @@ std::vector<at::Tensor> SMM_QmK_backward_cuda(const at::Tensor &grad_output,
 ///////////// SMM_AmV
 
 // CUDA kernel for forward propagation
-__global__ void SMM_AmV_forward_kernel(const float* A, const float* B, const int* index, float* C, int Batch, int M, int K, int B_cols) {
+__global__ void SMM_AmV_forward_kernel(const float* A, const float* B, const int* index, float* C, int Batch, int N, int K, int M, int C_dim) {
     int batch = blockIdx.z;
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (row < M && col < B_cols) {
+    if (row < N && col < C_dim) {
         float value = 0.0;
-        for (int e = 0; e < K; ++e) {
-            int b_row = index[batch * M * K + row * K + e];
-            value += A[batch * M * K + row * K + e] * B[batch * M * B_cols + b_row * B_cols + col];
+        for (int k = 0; k < K; ++k) {
+            int b_row = index[batch * N * K + row * K + k];
+            value += A[batch * N * K + row * K + k] * B[batch * M * C_dim + b_row * C_dim + col];
         }
-        C[batch * M * B_cols + row * B_cols + col] = value;
+        C[batch * N * C_dim + row * C_dim + col] = value;
     }
 }
 
@@ -148,36 +186,67 @@ at::Tensor SMM_AmV_forward_cuda(const at::Tensor &A, const at::Tensor &B, const 
     AT_ASSERTM(index.is_contiguous(), "Index tensor must be contiguous");
 
     const int Batch = A.size(0);
-    const int M = A.size(1);
+    const int N = A.size(1);
     const int K = A.size(2);
-    const int B_cols = B.size(2);
+    const int M = B.size(1);  // Row count of B
+    const int C_dim = B.size(2);
+    
 
-    auto C = at::zeros({Batch, M, B_cols}, A.options().dtype(torch::kFloat32));
+    auto C = at::zeros({Batch, N, C_dim}, A.options().dtype(torch::kFloat32));
 
-    const int threads = 32;
+    const int threads =16;
     const dim3 block_dim(threads, threads);
-    const dim3 grid_dim((B_cols + threads - 1) / threads, (M + threads - 1) / threads, Batch);
+    const dim3 grid_dim((C_dim + threads - 1) / threads, (N + threads - 1) / threads, Batch);
 
     SMM_AmV_forward_kernel<<<grid_dim, block_dim>>>(
-        A.data_ptr<float>(), B.data_ptr<float>(), index.data_ptr<int>(), C.data_ptr<float>(), Batch, M, K, B_cols
+        A.data_ptr<float>(), B.data_ptr<float>(), index.data_ptr<int>(), C.data_ptr<float>(), Batch, N, K, M, C_dim
     );
 
     return C;
 }
 
+// 独立计算grad_A的核函数（聚焦M维和K维）
+__global__ void SMM_AmV_backward_gradA_kernel(
+    const float* grad_output,
+    const float* B_T,
+    const int* index,
+    float* grad_A,
+    int Batch, int N, int K, int M, int C_dim)
+{
+    int batch = blockIdx.z;
+    int row = blockIdx.y * blockDim.y + threadIdx.y;  // M维度
+    int col = blockIdx.x * blockDim.x + threadIdx.x;     // K维度
 
-// CUDA kernel for backward propagation
-__global__ void SMM_AmV_backward_kernel(const float* grad_output, const float* A, const float* B, const int* index, float* grad_A, float* grad_B, int Batch, int M, int K, int B_cols) {
+    if (batch < Batch && row < N && col < K) {
+        int b_col = index[batch * N * K + row * K + col];
+        float grad_value = 0.0f;
+        for (int e = 0; e < C_dim; ++e) {
+            grad_value += grad_output[batch * N * C_dim + row * C_dim + e] * B_T[batch * C_dim * M + e * M + b_col];
+        }
+        grad_A[batch * N * K + row * K + col] = grad_value; // 直接写入，无需原子操作
+    }
+}
+
+
+// 修改后的grad_B核函数
+__global__ void SMM_AmV_backward_gradB_kernel(
+    const float* grad_output,
+    const float* A_T,
+    const int* index_T,
+    float* grad_B,
+    int Batch, int N, int K, int M, int C_dim)
+{
     int batch = blockIdx.z;
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (row < M && col < B_cols) {
-        float grad_value = grad_output[batch * M * B_cols + row * B_cols + col];
-        for (int e = 0; e < K; ++e) {
-            int b_row = index[batch * M * K + row * K + e];
-            atomicAdd(&grad_A[batch * M * K + row * K + e], grad_value * B[batch * M * B_cols + b_row * B_cols + col]);
-            atomicAdd(&grad_B[batch * M * B_cols + b_row * B_cols + col], grad_value * A[batch * M * K + row * K + e]);
+    if (batch < Batch && row < K && col < C_dim) {
+        for (int n = 0; n < N; ++n) {
+            int b_row = index_T[batch * K * N + row * N + n];
+            float a_val = A_T[batch * K * N + row * N + n];
+            float g = grad_output[batch * N * C_dim + n * C_dim + col];
+            // atomicAdd(&grad_B[batch * N * C_dim + b_row * C_dim + col], a_val * g);
+            grad_B[batch * M * C_dim + b_row * C_dim + col] += a_val * g;
         }
     }
 }
@@ -192,24 +261,40 @@ std::vector<at::Tensor> SMM_AmV_backward_cuda(const at::Tensor &grad_output, con
     AT_ASSERTM(grad_output.is_contiguous(), "grad_output tensor has to be contiguous");
 
     const int Batch = A.size(0);
-    const int M = A.size(1);
+    const int N = A.size(1);
     const int K = A.size(2);
-    const int B_cols = B.size(2);
+    const int M = B.size(1);  // Row count of B
+    const int C_dim = B.size(2); 
 
     auto grad_A = at::zeros_like(A);
     auto grad_B = at::zeros_like(B);
+    auto A_T = A.transpose(1, 2).contiguous(); // A^T (dimension swap)
+    auto B_T = B.transpose(1, 2).contiguous(); // B^T (dimension swap)
+    auto index_T = index.transpose(1, 2).contiguous();
 
-    const int threads = 32;
-    const dim3 block_dim(threads, threads);
-    const dim3 grid_dim((B_cols + threads - 1) / threads, (M + threads - 1) / threads, Batch);
+    // 重新配置执行参数
+    const int threads =16;
+    
+    dim3 grid_gradA((K + threads-1)/threads, (N + threads-1)/threads, Batch);
+    dim3 block_gradA(threads, threads);
+    
+    dim3 grid_gradB((C_dim + threads-1)/threads, (K + threads-1)/threads, Batch);
+    dim3 block_gradB(threads, threads);
 
-    SMM_AmV_backward_kernel<<<grid_dim, block_dim>>>(
-        grad_output.data_ptr<float>(), A.data_ptr<float>(), B.data_ptr<float>(), index.data_ptr<int>(), grad_A.data_ptr<float>(), grad_B.data_ptr<float>(), Batch, M, K, B_cols
+    // 分别启动核函数
+    SMM_AmV_backward_gradA_kernel<<<grid_gradA, block_gradA>>>(
+        grad_output.data_ptr<float>(), B_T.data_ptr<float>(), 
+        index.data_ptr<int>(), grad_A.data_ptr<float>(), 
+        Batch, N, K, M, C_dim
     );
 
+    SMM_AmV_backward_gradB_kernel<<<grid_gradB, block_gradB>>>(
+        grad_output.data_ptr<float>(), A_T.data_ptr<float>(), 
+        index_T.data_ptr<int>(), grad_B.data_ptr<float>(), 
+        Batch, N, K, M, C_dim
+    );
     return {grad_A, grad_B};
 }
-
 
 
 
