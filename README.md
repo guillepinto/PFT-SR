@@ -134,6 +134,18 @@ python basicsr/test.py -opt options/test/103_PFT_light_SRx4_finetune.yml
 <img width="800" src="figures/visual_lightweight.png">
 
 
+
+
 ## Acknowledgements
 This code is built on [BasicSR](https://github.com/XPixelGroup/BasicSR) and [ATD](https://github.com/LabShuHangGU/Adaptive-Token-Dictionary.git).
 
+## Citation
+
+```
+@article{long2025progressive,
+  title={Progressive Focused Transformer for Single Image Super-Resolution},
+  author={Long, Wei and Zhou, Xingyu and Zhang, Leheng and Gu, Shuhang},
+  journal={arXiv preprint arXiv:2503.20337},
+  year={2025}
+}
+```
