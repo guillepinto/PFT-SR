@@ -1135,7 +1135,6 @@ class PFT(nn.Module):
 
 if __name__ == '__main__':
     upscale = 2
-
     model = PFT(
         upscale=2,
         img_size=64,

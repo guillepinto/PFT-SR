@@ -52,6 +52,7 @@ def get_extensions():
     ]
     return ext_modules
 
+
 setup(
     name="smm_cuda",
     version="1.0",
