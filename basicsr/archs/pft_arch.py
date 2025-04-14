@@ -828,7 +828,7 @@ class UpsampleOneStep(nn.Sequential):
         flops = h * w * self.num_feat * 3 * 9
         return flops
 
-# @ARCH_REGISTRY.register()
+@ARCH_REGISTRY.register()
 class PFT(nn.Module):
     r""" PFT
         A PyTorch impl of : `Progressive Focused Transformer for Single Image Super-Resolution`.
