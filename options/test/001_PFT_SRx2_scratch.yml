@@ -31,7 +31,6 @@ datasets:
     io_backend:
       type: disk
 
-# RTX 4090's 24GB memory is insufficient for Urban100/Manga109; we tests performed on L40S.
   test_4:
     name: Urban100
     type: PairedImageDataset
