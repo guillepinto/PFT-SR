@@ -56,21 +56,22 @@ datasets:
     io_backend:
       type: disk
 
-  val_4:
-    name: Urban100
-    type: PairedImageDataset
-    dataroot_gt: datasets/TestDataSR/HR/Urban100/x2
-    dataroot_lq: datasets/TestDataSR/LR/LRBI/Urban100/x2
-    io_backend:
-      type: disk
+# RTX 4090's 24GB memory is insufficient for Urban100/Manga109; we tests performed on L40S.
+  # val_4:
+  #   name: Urban100
+  #   type: PairedImageDataset
+  #   dataroot_gt: datasets/TestDataSR/HR/Urban100/x2
+  #   dataroot_lq: datasets/TestDataSR/LR/LRBI/Urban100/x2
+  #   io_backend:
+  #     type: disk
 
-  val_5:
-    name: Manga109
-    type: PairedImageDataset
-    dataroot_gt: datasets/TestDataSR/HR/Manga109/x2
-    dataroot_lq: datasets/TestDataSR/LR/LRBI/Manga109/x2
-    io_backend:
-      type: disk
+  # val_5:
+  #   name: Manga109
+  #   type: PairedImageDataset
+  #   dataroot_gt: datasets/TestDataSR/HR/Manga109/x2
+  #   dataroot_lq: datasets/TestDataSR/LR/LRBI/Manga109/x2
+  #   io_backend:
+  #     type: disk
 
 # network structures
 network_g:
