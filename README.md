@@ -4,7 +4,6 @@ This repository is an official implementation of the paper "Progressive Focused 
 
 [![arXiv](https://img.shields.io/badge/Arxiv-2503.20337-AD1C18.svg?logo=arXiv)](https://arxiv.org/abs/2503.20337) [![Pretrained Models](https://img.shields.io/badge/Pretrained%20Models-AD1C18.svg?logo=Googledrive)](https://drive.google.com/drive/folders/1ChkxVDghFWUtJydJKLp5yssrUfm0VWfg?usp=sharing)
 
-
 By [Wei Long](https://scholar.google.com/citations?user=CsVTBJoAAAAJ), [Xingyu Zhou](https://scholar.google.com/citations?user=dgO3CyMAAAAJ), [Leheng Zhang](https://scholar.google.com/citations?user=DH1CJqkAAAAJ), and [Shuhang Gu](https://scholar.google.com/citations?user=-kSTt40AAAAJ).
 
 > **Abstract:** Transformer-based methods have achieved remarkable results in image super-resolution tasks because they can capture non-local dependencies in low-quality input images. However, this feature-intensive modeling approach is computationally expensive because it calculates the similarities between numerous features that are irrelevant to the query features when obtaining attention weights. These unnecessary similarity calculations not only degrade the reconstruction performance but also introduce significant computational overhead. How to accurately identify the features that are important to the current query features and avoid similarity calculations between irrelevant features remains an urgent problem. To address this issue, we propose a novel and effective **P**rogressive **F**ocused **T**ransformer (**PFT**) that links all isolated attention maps in the network through Progressive Focused Attention (PFA) to focus attention on the most important tokens. PFA not only enables the network to capture more critical similar features, but also significantly reduces the computational cost of the overall network by filtering out irrelevant features before calculating similarities. Extensive experiments demonstrate the effectiveness of the proposed method, achieving state-of-the-art performance on various single image super-resolution benchmarks..
@@ -105,6 +104,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 python -m torch.distributed.launch --use-env --npro
 ### Testing Commands
 - Refer to the testing configuration files in `./options/test` folder for detailed settings.
 - PFT (Classical Image Super-Resolution)
+- For x2 SR tasks on Urban100 and Manga109, the RTX 4090's memory proves inadequate, so we performed testing with L40S.
 ```bash
 python basicsr/test.py -opt options/test/001_PFT_SRx2_scratch.yml
 python basicsr/test.py -opt options/test/002_PFT_SRx3_finetune.yml
