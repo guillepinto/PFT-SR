@@ -299,19 +299,19 @@ class WindowAttention(nn.Module):
         # Save the current attention results as PFA maps.
         pfa_values[shift] = attn
 
-        # Save the attention map as a .npy file for visualization or further analysis
-        # Scatter the attention values back to their original indices
-        # attn_npy has shape (batch_size * num_windows, num_heads, n, n)
-        if pfa_indices[shift] is None:
-            attn_npy = attn
-        else:
-            attn_npy = torch.zeros((b_, self.num_heads, n, n), device=attn.device).scatter(-1, pfa_indices[shift], attn)
-        # Define the path where the attention map will be saved
-        attention_save_path = f"./results/Attention_map/PFT_light_attention_map_w32_L{self.layer_id}.npy"
-        os.makedirs("./results/Attention_map", exist_ok=True)
-        # Save the attention map only if the file does not already exist to avoid overwriting
-        if not os.path.exists(attention_save_path):
-            np.save(attention_save_path, attn_npy.cpu().detach().numpy())
+        # # Save the attention map as a .npy file for visualization or further analysis
+        # # Scatter the attention values back to their original indices
+        # # attn_npy has shape (batch_size * num_windows, num_heads, n, n)
+        # if pfa_indices[shift] is None:
+        #     attn_npy = attn
+        # else:
+        #     attn_npy = torch.zeros((b_, self.num_heads, n, n), device=attn.device).scatter(-1, pfa_indices[shift], attn)
+        # # Define the path where the attention map will be saved
+        # attention_save_path = f"./results/Attention_map/PFT_light_attention_map_w32_L{self.layer_id}.npy"
+        # os.makedirs("./results/Attention_map", exist_ok=True)
+        # # Save the attention map only if the file does not already exist to avoid overwriting
+        # if not os.path.exists(attention_save_path):
+        #     np.save(attention_save_path, attn_npy.cpu().detach().numpy())
 
 
         # Check whether sparsification has been applied; if so, use SMM_AmV for computation, otherwise perform standard matrix multiplication A @ V.
