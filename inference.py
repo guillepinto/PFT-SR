@@ -3,7 +3,7 @@ import os
 import os.path as osp
 import sys
 import argparse
-import smm_cuda
+
 from PIL import Image
 from torchvision import transforms
 from basicsr.archs.pft_arch import PFT
@@ -77,6 +77,7 @@ def main():
                               128, 128, 128, 128, 128, 128,
                               64, 64, 64, 64, 64, 64,
                               32, 32, 32, 32, 32, 32],
+                    window_size=32,
                     convffn_kernel_size=7,
                     mlp_ratio=1,
                     upsampler='pixelshuffledirect',

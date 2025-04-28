@@ -21,12 +21,13 @@ By [Wei Long](https://scholar.google.com/citations?user=CsVTBJoAAAAJ), [Xingyu Z
 1. [Testing](#testing)
 1. [Results](#results)
 1. [Visual Results](#visual-results)
+1. [Visualization of Attention Distributions](#visualization-of-attention-distributions)
 1. [Acknowledgements](#acknowledgements)
-
+1. [Citation](#citation)
 
 ## Environment
 - Python 3.9
-- PyTorch 2.5.1
+- PyTorch 2.5.0
 
 ### Installation
 ```bash
@@ -46,14 +47,14 @@ cd ./ops_smm
 Using ```inference.py``` for fast inference on single image or multiple images within the same folder.
 ```bash
 # For classical SR
-python inference.py -i test_image.png -o results/test/ --scale 4 --task classical
-python inference.py -i test_images/ -o results/test/ --scale 4 --task classical
+python inference.py -i inference_image.png -o results/test/ --scale 4 --task classical
+python inference.py -i inference_images/ -o results/test/ --scale 4 --task classical
 
 # For lightweight SR
-python inference.py -i test_image.png -o results/test/ --scale 4 --task lightweight
-python inference.py -i test_images/ -o results/test/ --scale 4 --task lightweight
+python inference.py -i inference_image.png -o results/test/ --scale 4 --task lightweight
+python inference.py -i inference_images/ -o results/test/ --scale 4 --task lightweight
 ```
-The PFT SR model processes the image ```test_image.png``` or images within the ```test_images/``` directory. The results will be saved in the ```results/test/``` directory.
+The PFT SR model processes the image ```inference_image.png``` or images within the ```inference_images/``` directory. The results will be saved in the ```results/inference/``` directory.
 
 
 ## Training
@@ -134,8 +135,20 @@ python basicsr/test.py -opt options/test/103_PFT_light_SRx4_finetune.yml
 
 <img width="800" src="figures/visual_lightweight.png">
 
+## Visualization of Attention Distributions
+<img width="800" src="figures/attention_distributions.png">
 
-
+1. Uncomment the code at this location to enable attention map saving: https://github.com/LabShuHangGU/PFT-SR/blob/master/basicsr/archs/pft_arch.py#L302-L314
+2. Perform inference on the image you want to visualize to generate and save the attention maps under the ./results/Attention_map directory:
+```
+python inference.py -i test_image.png -o results/test/ --scale 4 --task lightweight
+```
+3. Modify the corresponding paths and specify the window location you want to visualize in VisualAttention.py (the window is indexed from left to right, top to bottom, assuming the stride equals the window size).
+4. Run the following command to visualize the attention map:
+```
+python VisualAttention.py
+```
+It should be noted that PFT employs a shift window operation, resulting in different corresponding positions in the attention maps between odd-numbered and even-numbered layers.
 
 ## Acknowledgements
 This code is built on [BasicSR](https://github.com/XPixelGroup/BasicSR) and [ATD](https://github.com/LabShuHangGU/Adaptive-Token-Dictionary.git).
