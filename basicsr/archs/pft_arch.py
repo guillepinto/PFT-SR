@@ -257,8 +257,11 @@ class WindowAttention(nn.Module):
         if pfa_indices[shift] is None:
             attn = (q @ k.transpose(-2, -1))  # b_, self.num_heads, n, n
             relative_position_bias = self.relative_position_bias_table[rpi.view(-1)].view(self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1)  # Wh*Ww,Wh*Ww,nH
-            relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
-            attn = attn + relative_position_bias.unsqueeze(0)
+            relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous().unsqueeze(0)  # nH, Wh*Ww, Wh*Ww
+            if not self.training:  # Check if in inference mode
+                attn.add_(relative_position_bias)  # only in inference
+            else:
+                attn = attn + relative_position_bias  # Non-inplace if training
 
             if shift:
                 nw = mask.shape[0]
@@ -275,17 +278,28 @@ class WindowAttention(nn.Module):
             relative_position_bias = self.relative_position_bias_table[rpi.view(-1)].view(self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1)  # Wh*Ww,Wh*Ww,nH
             relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous().unsqueeze(0).expand(b_, self.num_heads, n, n)  # nH, Wh*Ww, Wh*Ww
             relative_position_bias = torch.gather(relative_position_bias, dim=-1, index=pfa_indices[shift])
-            attn = attn + relative_position_bias
+            if not self.training:  # Check if in inference mode
+                attn.add_(relative_position_bias)  # only in inference
+            else:
+                attn = attn + relative_position_bias  # Non-inplace if training
 
-        attn = self.softmax(attn)
+        # Use in-place operations where possible (only in inference mode)
+        if not self.training:  # Check if in inference mode
+            attn = torch.softmax(attn, dim=-1, out=attn)  # 原地softmax
+        else:
+            attn = self.softmax(attn)  # Non-inplace if training
+
 
         # Apply Hadamard product for PFA and normalize.
         if pfa_values[shift] is not None:
-            if not self.training:
-                attn *= pfa_values[shift]
+            if not self.training: # only in inference
+                attn.mul_(pfa_values[shift])
+                attn.add_(self.eps)
+                denom = attn.sum(dim=-1, keepdim=True).add_(self.eps)
+                attn.div_(denom)
             else:
                 attn = (attn * pfa_values[shift])
-            attn = (attn+self.eps) / (attn.sum(dim=-1, keepdim=True) + self.eps)
+                attn = (attn + self.eps) / (attn.sum(dim=-1, keepdim=True) + self.eps)
 
         # If sparsification is enabled, select top-k attention values and save the corresponding indexes
         if self.topk < self.window_size[0] * self.window_size[1]:
@@ -313,7 +327,6 @@ class WindowAttention(nn.Module):
         # if not os.path.exists(attention_save_path):
         #     np.save(attention_save_path, attn_npy.cpu().detach().numpy())
 
-
         # Check whether sparsification has been applied; if so, use SMM_AmV for computation, otherwise perform standard matrix multiplication A @ V.
         if pfa_indices[shift] is None:
             x = ((attn @ v) + v_lepe).transpose(1, 2).reshape(b_, n, c)
@@ -323,6 +336,11 @@ class WindowAttention(nn.Module):
             v = v.contiguous().view(b_ * self.num_heads, n, c // self.num_heads)
             smm_index = pfa_indices[shift].view(b_ * self.num_heads, n, topk).int()
             x = (SMM_AmV.apply(attn, v, smm_index).view(b_, self.num_heads, n, c // self.num_heads)+ v_lepe).transpose(1, 2).reshape(b_, n, c)
+
+        # only in inference. After use, delete unnecessary variables to free memory
+        if not self.training:
+            del q, k, v, relative_position_bias
+            torch.cuda.empty_cache()  # Clear the unused cache
 
         x = self.proj(x)
         return x, pfa_values, pfa_indices
@@ -450,6 +468,7 @@ class PFTransformerLayer(nn.Module):
             attn_x = torch.roll(shifted_x, shifts=(self.shift_size, self.shift_size), dims=(1, 2))
         else:
             attn_x = shifted_x
+
         x_win = attn_x
 
         x = shortcut + x_win.view(b, n, c)
