@@ -19,7 +19,7 @@ class PFTModel(SRModel):
     #             self.output = self.net_g(self.lq)
     #         self.net_g.train()
     
-    ### patchwise_testing
+    ### patchwise_testing (modified from https://github.com/csguoh/MambaIR)
     def test(self):
         _, C, h, w = self.lq.size()
         split_token_h = h // 256 + 1  # number of horizontal cut sections
