@@ -76,7 +76,6 @@ class PFTModel(SRModel):
                 # merge
                 for i in range(ral):
                     for j in range(row):
-                        print("1:", i, j)
                         top = slice(i * split_h * scale, (i + 1) * split_h * scale)
                         left = slice(j * split_w * scale, (j + 1) * split_w * scale)
                         if i == 0:
@@ -100,7 +99,6 @@ class PFTModel(SRModel):
                 # merge
                 for i in range(ral):
                     for j in range(row):
-                        print("2:", i, j)
                         top = slice(i * split_h * scale, (i + 1) * split_h * scale)
                         left = slice(j * split_w * scale, (j + 1) * split_w * scale)
                         if i == 0:
