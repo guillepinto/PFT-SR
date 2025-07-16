@@ -74,8 +74,7 @@ The PFT SR model processes the image ```inference_image.png``` or images within 
 # ×2 scratch, input size = 64×64, 500k iterations
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python -m torch.distributed.launch --use-env --nproc_per_node=8 --master_port=1145  basicsr/train.py -opt options/train/001_PFT_SRx2_scratch.yml --launcher pytorch
 
-# ×3 finetune, input size = 64×64, 250k iterations
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python -m torch.distributed.launch --use-env --nproc_per_node=8 --master_port=1145  basicsr/train.py -opt options/train/002_PFT_SRx3_finetune.yml --launcher pytorch
+# ×3 finetune, input size = 64×64, 250k iterationsCUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python -m torch.distributed.launch --use-env --nproc_per_node=8 --master_port=1145  basicsr/train.py -opt options/train/002_PFT_SRx3_finetune.yml --launcher pytorch
 
 # ×4 finetune, input size = 64×64, 250k iterations
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python -m torch.distributed.launch --use-env --nproc_per_node=8 --master_port=1145  basicsr/train.py -opt options/train/003_PFT_SRx4_finetune.yml --launcher pytorch
@@ -107,7 +106,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 python -m torch.distributed.launch --use-env --npro
 ### Testing Commands
 - Refer to the testing configuration files in `./options/test` folder for detailed settings.
 - PFT (Classical Image Super-Resolution)
-- For x2 SR tasks on Urban100 and Manga109, the RTX 4090's memory proves inadequate, so we performed testing with L40S.
+- **We have now integrated the patchwise_testing strategy into basicsr/models/pft_model.py. This update allows for successful inference on RTX 4090 GPUs without running into memory issues.**
 ```bash
 python basicsr/test.py -opt options/test/001_PFT_SRx2_scratch.yml
 python basicsr/test.py -opt options/test/002_PFT_SRx3_finetune.yml
