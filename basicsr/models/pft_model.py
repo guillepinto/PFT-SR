@@ -22,8 +22,8 @@ class PFTModel(SRModel):
     ### patchwise_testing
     def test(self):
         _, C, h, w = self.lq.size()
-        split_token_h = h // 128 + 1  # number of horizontal cut sections
-        split_token_w = w // 128 + 1  # number of vertical cut sections
+        split_token_h = h // 256 + 1  # number of horizontal cut sections
+        split_token_w = w // 256 + 1  # number of vertical cut sections
         # padding
         mod_pad_h, mod_pad_w = 0, 0
         if h % split_token_h != 0:
