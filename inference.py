@@ -84,7 +84,7 @@ def main():
                     use_checkpoint=False,
                     )
 
-    state_dict = torch.load(model_path[args.task][str(args.scale)], map_location=device)['params_ema']
+    state_dict = torch.load(model_path[args.task][str(args.scale)], map_location=device, weights_only=True)['params_ema']
     model.load_state_dict(state_dict, strict=True)
     model = model.to(device)
     model.eval()
